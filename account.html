@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your account · Manifest</title>
+<style>
+  body { margin: 0; background: #FAF7F0; color: #25352D; font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 480px; margin: 0 auto; padding: 40px 20px 64px; }
+  .brand { letter-spacing: .3em; font-weight: 600; color: #173D2D; text-decoration: none; }
+  h1 { color: #173D2D; font-size: 28px; line-height: 1.2; margin: 28px 0 12px; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 16px 0 6px; }
+  input { box-sizing: border-box; width: 100%; height: 48px; padding: 0 14px; font-size: 16px; border: 1px solid #D9D1C0; border-radius: 12px; background: #fff; }
+  button { margin-top: 20px; width: 100%; height: 48px; border: 0; border-radius: 24px; background: #173D2D; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .error { color: #A33A2B; }
+  .muted { color: #5E5A50; font-size: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+<a class="brand" href="index.html">MANIFEST</a>
+
+<section id="loading"><h1>One moment…</h1></section>
+
+<section id="reset" hidden>
+  <h1>Choose a new password</h1>
+  <form id="form">
+    <label for="pw">New password</label>
+    <input id="pw" type="password" autocomplete="new-password" minlength="8" required>
+    <label for="pw2">Type it again</label>
+    <input id="pw2" type="password" autocomplete="new-password" minlength="8" required>
+    <p class="muted">At least 8 characters.</p>
+    <p id="formError" class="error" role="alert"></p>
+    <button id="save" type="submit">Save new password</button>
+  </form>
+</section>
+
+<section id="done" hidden>
+  <h1>Password changed</h1>
+  <p>Open Manifest on your phone and sign in with your new password.</p>
+</section>
+
+<section id="confirmed" hidden>
+  <h1>Email confirmed</h1>
+  <p>You can open Manifest on your phone and sign in.</p>
+</section>
+
+<section id="problem" hidden>
+  <h1>This link did not work</h1>
+  <p id="problemText">It may have expired or already been used. In the app, tap "Forgot your password?" to get a new one.</p>
+</section>
+</main>
+<script src="supabase.js"></script>
+<script>
+  // Handles the links in Manifest's account emails (password reset and email
+  // confirmation). The publishable key is public by design: access to data is
+  // controlled by Row Level Security in the database.
+  const show = (id) => {
+    for (const s of document.querySelectorAll('main > section')) s.hidden = s.id !== id;
+  };
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const query = new URLSearchParams(location.search);
+  const type = hash.get('type') || query.get('type');
+  const failure = hash.get('error_description') || query.get('error_description');
+
+  if (failure) {
+    document.getElementById('problemText').textContent = failure.replace(/\+/g, ' ') + '. In the app, tap "Forgot your password?" to get a new link.';
+    show('problem');
+  } else if (type === 'recovery') {
+    const client = supabase.createClient('https://ubvszugdqsstryqdzgos.supabase.co', 'sb_publishable_IdThMafYQm2Z9R6i0ejEww_ykF1V4MR', {
+      auth: { persistSession: false, detectSessionInUrl: true, flowType: 'implicit' },
+    });
+    client.auth.getSession().then(({ data }) => {
+      if (!data.session) { show('problem'); return; }
+      history.replaceState(null, '', location.pathname);
+      show('reset');
+      const form = document.getElementById('form');
+      const err = document.getElementById('formError');
+      const save = document.getElementById('save');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err.textContent = '';
+        const pw = document.getElementById('pw').value;
+        if (pw.length < 8) { err.textContent = 'Use at least 8 characters.'; return; }
+        if (pw !== document.getElementById('pw2').value) { err.textContent = 'The two passwords are different.'; return; }
+        save.disabled = true;
+        const { error } = await client.auth.updateUser({ password: pw });
+        save.disabled = false;
+        if (error) { err.textContent = error.message; return; }
+        await client.auth.signOut({ scope: 'local' });
+        show('done');
+      });
+    });
+  } else if (hash.get('access_token') || type === 'signup' || type === 'email') {
+    history.replaceState(null, '', location.pathname);
+    show('confirmed');
+  } else {
+    location.replace('index.html');
+  }
+</script>
+</body>
+</html>
